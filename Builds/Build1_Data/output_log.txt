@@ -1,0 +1,36 @@
+Mono path[0] = 'F:/Files/UnityProjects/Rubiks/Builds/Build1_Data/Managed'
+Mono path[1] = 'F:/Files/UnityProjects/Rubiks/Builds/Build1_Data/Mono'
+Mono config path = 'F:/Files/UnityProjects/Rubiks/Builds/Build1_Data/Mono/etc'
+PlayerConnection initialized from F:/Files/UnityProjects/Rubiks/Builds/Build1_Data (debug = 0)
+PlayerConnection initialized network socket : 0.0.0.0 55464
+Multi-casting "[IP] 192.168.174.1 [Port] 55464 [Flags] 3 [Guid] 1637665232 [EditorId] 804380185 [Version] 1048832 [Id] WindowsPlayer(Josh-DellXPS) [Debug] 1" to [225.0.0.222:54997]...
+Waiting for connection from host on [192.168.174.1:55464]...
+PlayerConnection accepted from [192.168.1.214] handle:0x2c4
+Using monoOptions --debugger-agent=transport=dt_socket,embedding=1,defer=y,address=0.0.0.0:56232
+PlayerConnection already initialized - listening to [192.168.174.1:55464]
+Initialize engine version: 5.2.1f1 (44735ea161b3)
+GfxDevice: creating device client; threaded=1
+Direct3D:
+    Version:  Direct3D 11.0 [level 11.0]
+    Renderer: AMD Mobility Radeon HD 5000 (ID=0x68c0)
+    Vendor:   ATI
+    VRAM:     1017 MB
+Begin MonoManager ReloadAssembly
+Platform assembly: F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\UnityEngine.dll (this message is harmless)
+Loading F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\UnityEngine.dll into Unity Child Domain
+Platform assembly: F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\Assembly-CSharp.dll (this message is harmless)
+Loading F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\Assembly-CSharp.dll into Unity Child Domain
+Platform assembly: F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\UnityEngine.UI.dll (this message is harmless)
+Loading F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\UnityEngine.UI.dll into Unity Child Domain
+Platform assembly: F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\UnityEngine.Networking.dll (this message is harmless)
+Loading F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\UnityEngine.Networking.dll into Unity Child Domain
+Platform assembly: F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\System.Core.dll (this message is harmless)
+- Completed reload, in  0.187 seconds
+desktop: 1600x900 60Hz; virtual: 1600x900 at 0,0
+<RI> Initializing input.
+<RI> Input initialized.
+<RI> Initialized touch support.
+Platform assembly: F:\Files\UnityProjects\Rubiks\Builds\Build1_Data\Managed\System.dll (this message is harmless)
+Setting up 1 worker threads for Enlighten.
+  Thread -> id: 3994 -> priority: 1 
+Waiting for finish

@@ -1,0 +1,17 @@
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\Assembly-CSharp.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\Assembly-CSharp.pdb
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\Mono.Cecil.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEditor.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEditor.iOS.Extensions.Xcode.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEngine.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEngine.Networking.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEngine.UI.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEngine.xml
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEngine.UI.xml
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEngine.Networking.xml
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEditor.xml
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\Mono.Cecil.xml
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_bin\Debug\UnityEditor.iOS.Extensions.Xcode.xml
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_obj\Debug\Rubiks.CSharp.csprojResolveAssemblyReference.cache
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_obj\Debug\Assembly-CSharp.dll
+F:\Files\UnityProjects\Rubiks\Temp\UnityVS_obj\Debug\Assembly-CSharp.pdb
