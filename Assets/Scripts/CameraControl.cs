@@ -6,12 +6,14 @@ public class CameraControl : MonoBehaviour {
 	public float mouseSensitivity;
 	public float degreeLimit;
 	public GameObject target;
-	
+
+	private Vector3 focus;
 	private bool IsRotating;
 
 	// Use this for initialization
 	void Start () 
 	{
+		this.focus = target.transform.position;
 	}
 	
 	// Update is called once per frame
@@ -32,10 +34,10 @@ public class CameraControl : MonoBehaviour {
 		if (IsRotating)
 		{
 			// Rotate the camera around the object based on the X and Y offset in mouse input
-			var offset = this.transform.position - target.transform.position;
+			var offset = this.transform.position - focus;
 
 			// Rotate in the X axis
-			transform.RotateAround(target.transform.position, target.transform.up, mouseSensitivity * mouseX);
+			transform.RotateAround(focus, target.transform.up, mouseSensitivity * mouseX);
 			if (Math.Abs(offset.x) < degreeLimit && Math.Abs(offset.z) < degreeLimit && offset.y > 0 && mouseY < 0)
 			{
 				return;
@@ -45,7 +47,7 @@ public class CameraControl : MonoBehaviour {
 				return;
 			}
 			// Rotate in Y axis
-			transform.RotateAround(target.transform.position, Vector3.Cross(offset, target.transform.up), -mouseSensitivity * mouseY);
+			transform.RotateAround(focus, Vector3.Cross(offset, target.transform.up), -mouseSensitivity * mouseY);
 
 			// Realign the camera so it's not tilted
 			transform.Rotate(new Vector3(0, 0, -transform.eulerAngles.z));

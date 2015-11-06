@@ -17,60 +17,60 @@ namespace Assets.Classes
 	public static class CubeRow
 	{
 		// Return the index of the faces corresponding to the given row index
-		public static IList<CubeFaceIndex> GetFacesInRow (CubeRowIndex rowIndex)
+		public static IList<CubePieceIndex> GetFacesInRow (CubeRowIndex rowIndex)
 		{
 			if (rowIndex == CubeRowIndex.Top)
 			{
-				return new List<CubeFaceIndex>() 
+				return new List<CubePieceIndex>() 
 				{ 
-					CubeFaceIndex.Topleft, 
-					CubeFaceIndex.TopCenter, 
-					CubeFaceIndex.TopRight 
+					CubePieceIndex.Topleft, 
+					CubePieceIndex.TopCenter, 
+					CubePieceIndex.TopRight 
 				};
 			}
 			if (rowIndex == CubeRowIndex.Left)
 			{
-				return new List<CubeFaceIndex>() 
+				return new List<CubePieceIndex>() 
 				{ 
-					CubeFaceIndex.Topleft, 
-					CubeFaceIndex.CenterLeft, 
-					CubeFaceIndex.BottomLeft 
+					CubePieceIndex.Topleft, 
+					CubePieceIndex.CenterLeft, 
+					CubePieceIndex.BottomLeft 
 				};
 			}
 			if (rowIndex == CubeRowIndex.Right)
 			{
-				return new List<CubeFaceIndex>() 
+				return new List<CubePieceIndex>() 
 				{ 
-					CubeFaceIndex.TopRight, 
-					CubeFaceIndex.CenterRight, 
-					CubeFaceIndex.BottomRight 
+					CubePieceIndex.TopRight, 
+					CubePieceIndex.CenterRight, 
+					CubePieceIndex.BottomRight 
 				};
 			}
-			if (rowIndex == CubeRowIndex.Right)
+			if (rowIndex == CubeRowIndex.Bottom)
 			{
-				return new List<CubeFaceIndex>() 
+				return new List<CubePieceIndex>() 
 				{
-					CubeFaceIndex.BottomLeft, 
-					CubeFaceIndex.BottomCenter, 
-					CubeFaceIndex.BottomRight 
+					CubePieceIndex.BottomLeft, 
+					CubePieceIndex.BottomCenter, 
+					CubePieceIndex.BottomRight 
 				};
 			}
 			if (rowIndex == CubeRowIndex.CenterHorizontal)
 			{
-				return new List<CubeFaceIndex>() 
+				return new List<CubePieceIndex>() 
 				{
-					CubeFaceIndex.CenterLeft, 
-					CubeFaceIndex.Center, 
-					CubeFaceIndex.CenterRight 
+					CubePieceIndex.CenterLeft, 
+					CubePieceIndex.Center, 
+					CubePieceIndex.CenterRight 
 				};
 			}
-			//if (rowIndex == CubeRowIndex.Right)
+			//if (rowIndex == CubeRowIndex.CenterVertical)
 			//{
-			return new List<CubeFaceIndex>() 
+			return new List<CubePieceIndex>() 
 			{
-				CubeFaceIndex.TopCenter, 
-				CubeFaceIndex.Center, 
-				CubeFaceIndex.BottomCenter 
+				CubePieceIndex.TopCenter, 
+				CubePieceIndex.Center, 
+				CubePieceIndex.BottomCenter 
 			};
 			//}
 		}
