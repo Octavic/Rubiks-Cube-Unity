@@ -118,6 +118,55 @@ public class CubeControl : MonoBehaviour
 	{
 		return this.redoStack.Count > 0;
 	}
+	
+	// Undo/Redo the last move
+	public void Undo()
+	{
+		var move = this.undoStack.Pop();
+
+		this.RotateFace(move.faceRotated, move.rotationMethod);
+		switch(move.rotationMethod)
+		{
+			case RotationMethodIndex.Counterclockwise:
+				{
+					RotateFaceBasedOnMethod(move.faceRotated, RotationMethodIndex.Clockwise);
+					break;
+				}
+			case RotationMethodIndex.Clockwise:
+				{
+					RotateFaceBasedOnMethod(move.faceRotated, RotationMethodIndex.Counterclockwise);
+					break;
+				}
+			case RotationMethodIndex.HalfCircle:
+				{
+					RotateFaceBasedOnMethod(move.faceRotated, RotationMethodIndex.HalfCircle);
+					break;
+				}
+			default:
+				{
+					throw new IndexOutOfRangeException("The rotation method should never be none");
+				}
+		}
+
+		// Add the undid move to the redo stack
+		this.redoStack.Push(move);
+	}
+	public void Redo()
+	{
+		var move = this.redoStack.Pop();
+
+		this.RotateFace(move.faceRotated, move.rotationMethod);
+		RotateFaceBasedOnMethod(move.faceRotated, move.rotationMethod);
+
+		// Add the redid move back into undo stack
+		this.undoStack.Push(move);
+	}
+
+	// Scramble the cube
+	public void Scramble()
+	{
+
+	}
 
 	// Use this for initialization
 	void Start()
@@ -482,6 +531,34 @@ public class CubeControl : MonoBehaviour
 		}
 		return givenPieceFace.transform.position.z != givenPieceBase.transform.position.z;
 
+	}
+
+	// Rotate the given face based on the rotation method
+	private void RotateFaceBasedOnMethod(RotatableCubeFaceIndex cubeFaceIndex, RotationMethodIndex rotationMethod)
+	{
+		switch (rotationMethod)
+		{
+			case RotationMethodIndex.Clockwise:
+				{
+					this.cubeFaceList[cubeFaceIndex].Rotate(90);
+					return;
+				}
+			case RotationMethodIndex.Counterclockwise:
+				{
+					this.cubeFaceList[cubeFaceIndex].Rotate(-90);
+					return;
+				}
+			case RotationMethodIndex.HalfCircle:
+				{
+					this.cubeFaceList[cubeFaceIndex].Rotate(180);
+					return;
+				}
+			default:
+				{
+					break;
+				}
+		}
+		return;
 	}
 
 	// Determine the face currently being rotated, the direction and relation to mouse X or Y
