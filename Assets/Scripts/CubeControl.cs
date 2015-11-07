@@ -97,6 +97,8 @@ public class CubeControl : MonoBehaviour
 	// If the cube is under an ongoing rotation, and the face at which is currently being rotate
 	private bool isBeingRotated;
 	private bool isStabilizing;
+	// If the cube is undo/redoing right now
+	private bool isUndoRedoing;
 	// The faces that would be the turned if the mouse if moved
 	private Nullable<RotatableCubeFaceIndex> currentRotatingFaceIndex;
 	// If the current rotation is revolved around mouse X or mouse Y
@@ -122,44 +124,51 @@ public class CubeControl : MonoBehaviour
 	// Undo/Redo the last move
 	public void Undo()
 	{
-		var move = this.undoStack.Pop();
-
-		this.RotateFace(move.faceRotated, move.rotationMethod);
-		switch(move.rotationMethod)
+		// If the cube is currently doing a undo/redo
+		if (this.isUndoRedoing)
 		{
-			case RotationMethodIndex.Counterclockwise:
-				{
-					RotateFaceBasedOnMethod(move.faceRotated, RotationMethodIndex.Clockwise);
-					break;
-				}
-			case RotationMethodIndex.Clockwise:
-				{
-					RotateFaceBasedOnMethod(move.faceRotated, RotationMethodIndex.Counterclockwise);
-					break;
-				}
-			case RotationMethodIndex.HalfCircle:
-				{
-					RotateFaceBasedOnMethod(move.faceRotated, RotationMethodIndex.HalfCircle);
-					break;
-				}
-			default:
-				{
-					throw new IndexOutOfRangeException("The rotation method should never be none");
-				}
+			return;
 		}
+
+		// Assign flag
+		this.isUndoRedoing = true;
+
+		// Pop the move and find the opposite rotation
+		var move = this.undoStack.Pop();
+		var oppositeRotation = CubeControl.FindOppositeMethod(move.rotationMethod);
+
+		this.ReconfigureFacePiecesBasedOnRotation(move.faceRotated, oppositeRotation);
+		this.RotateFaceBasedOnMethod(move.faceRotated, oppositeRotation);
+		this.cubeFaceList[move.faceRotated].ClearRotation();
 
 		// Add the undid move to the redo stack
 		this.redoStack.Push(move);
+
+		// Release flag
+		this.isUndoRedoing = false;
 	}
 	public void Redo()
 	{
+		// If the cube is currently doing a undo/redo
+		if (this.isUndoRedoing)
+		{
+			return;
+		}
+
+		// Assign flag
+		this.isUndoRedoing = true;
+
+		// pop the move
 		var move = this.redoStack.Pop();
 
-		this.RotateFace(move.faceRotated, move.rotationMethod);
+		this.ReconfigureFacePiecesBasedOnRotation(move.faceRotated, move.rotationMethod);
 		RotateFaceBasedOnMethod(move.faceRotated, move.rotationMethod);
+		this.cubeFaceList[move.faceRotated].ClearRotation();
 
 		// Add the redid move back into undo stack
 		this.undoStack.Push(move);
+
+		this.isUndoRedoing = false;
 	}
 
 	// Scramble the cube
@@ -171,7 +180,8 @@ public class CubeControl : MonoBehaviour
 	// Use this for initialization
 	void Start()
 	{
-		//// Initialize values;
+		// Initialize values;
+		this.isUndoRedoing = false;
 		this.isBeingRotated = false;
 		this.isStabilizing = false;
 		this.currentRotatingFaceIndex = null;
@@ -389,7 +399,7 @@ public class CubeControl : MonoBehaviour
 		var yellowCubeFaceRotationRule = new CubeFaceRotationRules(yellowCubeFaceAffectedFaces, yellowCubeFaceAffectedRows, yellowCubeFaceRequireToFlip);
 
 		// Configure centerHorizontal face
-		var centerHorizontalCubeFaceAffectedFaces = new List<CubeFace>() { redCubeFace, greenCubeFace, orangeCubeFace, blueCubeFace };
+		var centerHorizontalCubeFaceAffectedFaces = new List<CubeFace>() { orangeCubeFace, blueCubeFace, redCubeFace, greenCubeFace};
 		var centerHorizontalCubeFaceAffectedRows = new List<CubeRowIndex>() { CubeRowIndex.CenterHorizontal, CubeRowIndex.CenterHorizontal, CubeRowIndex.CenterHorizontal, CubeRowIndex.CenterHorizontal };
 		var centerHorizontalCubeFaceRequireToFlip = new List<bool>() { false, false, false, false };
 		var centerHorizontalCubeFaceRotationRule = new CubeFaceRotationRules(centerHorizontalCubeFaceAffectedFaces, centerHorizontalCubeFaceAffectedRows, centerHorizontalCubeFaceRequireToFlip);
@@ -433,7 +443,7 @@ public class CubeControl : MonoBehaviour
 	}
 
 	// Rotate the given face with the given method
-	void RotateFace(RotatableCubeFaceIndex faceIndex, RotationMethodIndex rotationMethod)
+	private void ReconfigureFacePiecesBasedOnRotation(RotatableCubeFaceIndex faceIndex, RotationMethodIndex rotationMethod)
 	{
 		if (rotationMethod == RotationMethodIndex.None)
 		{
@@ -458,7 +468,7 @@ public class CubeControl : MonoBehaviour
 			// If half circle, do it again
 			if (rotationMethod == RotationMethodIndex.HalfCircle)
 			{
-				this.RotateFace(faceIndex, RotationMethodIndex.Clockwise);
+				this.ReconfigureFacePiecesBasedOnRotation(faceIndex, RotationMethodIndex.Clockwise);
 			}
 		}
 		else if (rotationMethod == RotationMethodIndex.Counterclockwise)
@@ -500,7 +510,32 @@ public class CubeControl : MonoBehaviour
 		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Right].CubePieceList[CubePieceIndex.Center];
 		#endregion
 	}
-	
+
+	// Find the opposite move
+	private static RotationMethodIndex FindOppositeMethod(RotationMethodIndex rotationMethodIndex)
+	{
+		switch (rotationMethodIndex)
+		{
+			case RotationMethodIndex.Counterclockwise:
+				{
+					return RotationMethodIndex.Clockwise;
+				}
+			case RotationMethodIndex.Clockwise:
+				{
+					return RotationMethodIndex.Counterclockwise;
+				}
+			case RotationMethodIndex.HalfCircle:
+				{
+					return RotationMethodIndex.HalfCircle;
+				}
+			default:
+				{
+					break;
+				}
+		}
+		return RotationMethodIndex.None;
+	}
+
 	// Determine if the given game object is on the surface of the cube piece
 	private bool IsPieceOnSurfaceOfCubeFace(GameObject givenPieceFace, RotatableCubeFaceIndex cubeFaceIndex)
 	{
@@ -641,7 +676,7 @@ public class CubeControl : MonoBehaviour
 			currentCenterVertical = RotatableCubeFaceIndex.CenterSideways;
 			currentCenterSideways = RotatableCubeFaceIndex.CenterVertical;
 			IsCurrentCenterVerticalReversed = false;
-			IsCurrentCenterSidewaysReversed = true;
+			IsCurrentCenterSidewaysReversed = false;
 		}
 		else
 		{
@@ -967,7 +1002,7 @@ public class CubeControl : MonoBehaviour
 			{
 				// the cube is done stabilizing, get the amount rotated, apply them to the faces and then clear the rotation
 				var rotationMethod = this.cubeFaceList[currentRotatingFaceIndex.Value].CheckAmountRotated();
-				this.RotateFace(currentRotatingFaceIndex.Value, rotationMethod);
+				this.ReconfigureFacePiecesBasedOnRotation(currentRotatingFaceIndex.Value, rotationMethod);
 				currentRotatingFace.ClearRotation();
 
 				// If an actual move is done, add it to the undo stack and clear the redo stack

@@ -22,9 +22,6 @@ public class UIControl : MonoBehaviour {
 		this.undoButton = this.transform.FindChild("UndoButton").gameObject;
 		this.redoButton = this.transform.FindChild("RedoButton").gameObject;
 
-		undoButton.GetComponent<Button>().interactable = false;
-		redoButton.GetComponent<Button>().interactable = false;
-
 		CubeTargetControl = CubeTarget.GetComponent<CubeControl>();	
 	}
 	
