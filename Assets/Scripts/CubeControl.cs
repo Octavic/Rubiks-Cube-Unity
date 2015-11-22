@@ -10,6 +10,12 @@ public class CubeControl : MonoBehaviour
 	public float rotationVelocity;
 	// The speed at which the faces should stabilize themselves after the user let go
 	public float stabilizeVelocity;
+	// The speed at which the cube should be rotated during undo and redo in degrees per frame
+	public float UndoRedoVelcotity;
+	// The speed at which the cube should be rotated during scramble in degrees per frame
+	public float ScrambleVelocity;
+	// How many rotation to do during scramble
+	public int ScrambleAmount;
 	// The main game camera
 	public GameObject mainCamera;
 
@@ -30,7 +36,7 @@ public class CubeControl : MonoBehaviour
 		FrontBack
 	}
 	// The list of available faces
-	private enum RotatableCubeFaceIndex
+	protected enum RotatableCubeFaceIndex
 	{
 		Top,
 		Front,
@@ -49,7 +55,7 @@ public class CubeControl : MonoBehaviour
 	private Stack<MoveDone> redoStack;
 
 	// To record a move done
-	private class MoveDone
+	protected class MoveDone
 	{
 		public RotatableCubeFaceIndex faceRotated;
 		public RotationMethodIndex rotationMethod;
@@ -59,8 +65,7 @@ public class CubeControl : MonoBehaviour
 			this.rotationMethod = rotationMethod;
 		}
 	}
-
-
+	// To be used in the queue of pending rotations
 	// The rules of rotation
 	//
 	// Axis: The axis around which the face is rotating
@@ -90,27 +95,155 @@ public class CubeControl : MonoBehaviour
 		}
 	}
 
+	// The classes used in the job queue
+	private abstract class IJob
+	{
+		protected RotatableCubeFaceIndex cubeFaceIndex;
+		protected CubeControl cube;
+		public abstract void Execute();
+		public abstract bool IsFinished();
+	}
+	private class JobRotateByMouse : IJob
+	{
+		private bool isClockwise;
+		private bool isMainMouseX;
+		public JobRotateByMouse(RotatableCubeFaceIndex cubeFaceIndex, CubeControl cube, bool isClockwise, bool isMainMouseX)
+		{
+			this.cubeFaceIndex = cubeFaceIndex;
+			this.cube = cube;
+			this.isClockwise = isClockwise;
+			this.isMainMouseX = isMainMouseX;
+		}
+		public override void Execute()
+		{
+			var mouseX = Input.GetAxis("Mouse X");
+			var mouseY = Input.GetAxis("Mouse Y");
+
+			if (this.cubeFaceIndex == null)
+			{
+				return;
+			}
+			if (this.isMainMouseX)
+			{
+				var degree = mouseX * cube.rotationVelocity;
+				if (this.isClockwise)
+				{
+					cube.cubeFaceList[cubeFaceIndex].Rotate(degree);
+				}
+				else
+				{
+					cube.cubeFaceList[cubeFaceIndex].Rotate(-degree);
+				}
+			}
+			else
+			{
+				var degree = mouseY * cube.rotationVelocity;
+				if (this.isClockwise)
+				{
+					cube.cubeFaceList[cubeFaceIndex].Rotate(degree);
+				}
+				else
+				{
+					cube.cubeFaceList[cubeFaceIndex].Rotate(-degree);
+				}
+			}
+		}
+
+		public override bool IsFinished()
+		{
+			return Input.GetMouseButtonUp(0);
+		}
+	}
+	private class JobRotateFface : IJob
+	{
+		private float degreesLeft;
+		public JobRotateFface(RotatableCubeFaceIndex cubeFaceIndex, CubeControl cube, float degreesLeft)
+		{
+			this.cubeFaceIndex = cubeFaceIndex;
+			this.cube = cube;
+			this.degreesLeft = degreesLeft;
+		}
+		public override void Execute()
+		{
+			var maxDegreePerFrame = cube.UndoRedoVelcotity;
+			if (Math.Abs(degreesLeft) <= maxDegreePerFrame)
+			{
+				cube.cubeFaceList[cubeFaceIndex].Rotate(degreesLeft);
+				degreesLeft = 0;
+				return;
+			}
+			if (degreesLeft > 0)
+			{
+				cube.cubeFaceList[cubeFaceIndex].Rotate(maxDegreePerFrame);
+				degreesLeft -= maxDegreePerFrame;
+			}
+			else
+			{
+				cube.cubeFaceList[cubeFaceIndex].Rotate(-maxDegreePerFrame);
+				degreesLeft += maxDegreePerFrame;
+			}
+		}
+		public override bool IsFinished()
+		{
+			return degreesLeft == 0;
+		}
+	}
+	private class JobStabilize : IJob
+	{
+		public JobStabilize(RotatableCubeFaceIndex cubeFaceIndex, CubeControl cube)
+		{
+			this.cubeFaceIndex = cubeFaceIndex;
+			this.cube = cube;
+		}
+		public override void Execute()
+		{
+			cube.cubeFaceList[cubeFaceIndex].Stabilize(cube.stabilizeVelocity);
+		}
+		public override bool IsFinished()
+		{
+			return cube.cubeFaceList[cubeFaceIndex].IsStabilized();
+		}
+	}
+	private class JobReassignFaces : IJob
+	{
+		public JobReassignFaces(RotatableCubeFaceIndex cubeFaceIndex, CubeControl cube)
+		{
+			this.cubeFaceIndex = cubeFaceIndex;
+			this.cube = cube;
+		}
+		public override void Execute()
+		{
+			var rotationMethod = this.cube.cubeFaceList[cubeFaceIndex].CheckAmountRotated();
+			cube.ReconfigureFacePiecesBasedOnRotation(cubeFaceIndex, rotationMethod);
+			cube.cubeFaceList[cubeFaceIndex].ClearRotation();
+		}
+		public override bool IsFinished()
+		{
+			return true;
+		}
+
+		// Get the move done to be pushed into the undo/redo stack
+		public MoveDone GetMove()
+		{
+			return new MoveDone(cubeFaceIndex, this.cube.cubeFaceList[cubeFaceIndex].CheckAmountRotated());
+		}
+	}
+	
+
 	// List of faces and rules for the faces to rotate in
-	private IDictionary<RotatableCubeFaceIndex, CubeFace> cubeFaceList;
+	protected IDictionary<RotatableCubeFaceIndex, CubeFace> cubeFaceList;
 	private IDictionary<RotatableCubeFaceIndex, CubeFaceRotationRules> cubeFaceRotationRulesList;
 
-	// If the cube is under an ongoing rotation, and the face at which is currently being rotate
-	private bool isBeingRotated;
-	private bool isStabilizing;
-	// If the cube is undo/redoing right now
-	private bool isUndoRedoing;
-	// The faces that would be the turned if the mouse if moved
-	private Nullable<RotatableCubeFaceIndex> currentRotatingFaceIndex;
-	// If the current rotation is revolved around mouse X or mouse Y
-	private bool isMainMouseAxisX;
 	// If the mouse is still and we are awaiting an input
 	private bool isWaitingMouseMovement;
-	// Determine the way the above face will rotate if the mouse is moved
-	private bool isCurrentFaceRotatingClockwise;
-	// The current mouse X and mouse Y movement;
+
+	// The queue  pending moves
+	private Queue<IJob> jobQueue;
+	
+	// The current mouse x and mouse y positions, updated every frame
 	private float mouseX;
 	private float mouseY;
-	
+
 	// If there's steps left to undo/redo
 	public bool HasUndoStepsLeft()
 	{
@@ -124,79 +257,83 @@ public class CubeControl : MonoBehaviour
 	// Undo/Redo the last move
 	public void Undo()
 	{
-		// If the cube is currently doing a undo/redo
-		if (this.isUndoRedoing)
-		{
-			return;
-		}
-
-		// Assign flag
-		this.isUndoRedoing = true;
-
 		// Pop the move and find the opposite rotation
 		var move = this.undoStack.Pop();
 		var oppositeRotation = CubeControl.FindOppositeMethod(move.rotationMethod);
 
-		this.ReconfigureFacePiecesBasedOnRotation(move.faceRotated, oppositeRotation);
-		this.RotateFaceBasedOnMethod(move.faceRotated, oppositeRotation);
-		this.cubeFaceList[move.faceRotated].ClearRotation();
+		//this.ReconfigureFacePiecesBasedOnRotation(move.faceRotated, oppositeRotation);
+		//this.RotateFaceBasedOnMethod(move.faceRotated, oppositeRotation);
+		//this.cubeFaceList[move.faceRotated].ClearRotation();
+
+		// Insert the new job into the job queue followed by a stabilize and reassign
+		this.jobQueue.Enqueue(new JobRotateFface(move.faceRotated, this, GetDegreeFromRotationMethod(oppositeRotation)));
+		this.jobQueue.Enqueue(new JobStabilize(move.faceRotated, this));
+		this.jobQueue.Enqueue(new JobReassignFaces(move.faceRotated, this));
 
 		// Add the undid move to the redo stack
 		this.redoStack.Push(move);
-
-		// Release flag
-		this.isUndoRedoing = false;
 	}
 	public void Redo()
 	{
-		// If the cube is currently doing a undo/redo
-		if (this.isUndoRedoing)
-		{
-			return;
-		}
-
-		// Assign flag
-		this.isUndoRedoing = true;
-
 		// pop the move
 		var move = this.redoStack.Pop();
 
-		this.ReconfigureFacePiecesBasedOnRotation(move.faceRotated, move.rotationMethod);
-		RotateFaceBasedOnMethod(move.faceRotated, move.rotationMethod);
-		this.cubeFaceList[move.faceRotated].ClearRotation();
+		//this.ReconfigureFacePiecesBasedOnRotation(move.faceRotated, move.rotationMethod);
+		//RotateFaceBasedOnMethod(move.faceRotated, move.rotationMethod);
+		//this.cubeFaceList[move.faceRotated].ClearRotation();
+
+		// Insert the new job into the job queue
+		this.jobQueue.Enqueue(new JobRotateFface(move.faceRotated, this, GetDegreeFromRotationMethod(move.rotationMethod)));
+		this.jobQueue.Enqueue(new JobStabilize(move.faceRotated, this));
+		this.jobQueue.Enqueue(new JobReassignFaces(move.faceRotated, this));
 
 		// Add the redid move back into undo stack
 		this.undoStack.Push(move);
-
-		this.isUndoRedoing = false;
 	}
 
 	// Scramble the cube
 	public void Scramble()
 	{
+		// The amount of total rotatable faces
+		var totalRotatableFacesAmount = Enum.GetNames(typeof(RotatableCubeFaceIndex)).Length;
+		// The amount of total possible rotation methods
+		var totalRotationMethodAmount = Enum.GetNames(typeof(RotationMethodIndex)).Length;
 
+		// The random number generator
+		var randomNumberGenerator = new System.Random();
+
+		// Loop for the amount required to scramble and do a random move on a random face everytime
+		for (int i = 0; i < this.ScrambleAmount; i++)
+		{
+			// Get the randomized face
+			var currentFace = (RotatableCubeFaceIndex)randomNumberGenerator.Next(0, totalRotatableFacesAmount);
+			var currentMethod = (RotationMethodIndex)randomNumberGenerator.Next(0, totalRotationMethodAmount);
+
+			// Push the current move into the job queue
+			this.jobQueue.Enqueue(new JobRotateFface(currentFace, this, this.GetDegreeFromRotationMethod(currentMethod)));
+			// Push stabilize and reassign
+			this.jobQueue.Enqueue(new JobStabilize(currentFace, this));
+			this.jobQueue.Enqueue(new JobReassignFaces(currentFace, this));
+		}
 	}
 
 	// Use this for initialization
 	void Start()
 	{
 		// Initialize values;
-		this.isUndoRedoing = false;
-		this.isBeingRotated = false;
-		this.isStabilizing = false;
-		this.currentRotatingFaceIndex = null;
-		this.isCurrentFaceRotatingClockwise = false;
-		this.isMainMouseAxisX = false;
 		this.isWaitingMouseMovement = false;
 		this.undoStack = new Stack<MoveDone>();
 		this.redoStack = new Stack<MoveDone>();
+
+		// Initialize the pending rotation queue
+		this.jobQueue = new Queue<IJob>();
 
 		// Initialize the facelist
 		this.cubeFaceList = new Dictionary<RotatableCubeFaceIndex, CubeFace>();
 		this.cubeFaceRotationRulesList = new Dictionary<RotatableCubeFaceIndex, CubeFaceRotationRules>();
 
 		//Initilizing and configuring the child cube faces into cube face
-		#region
+		#region Acquire cube pieces
 		// Get the center cube piece
 		var centerCube = this.transform.FindChild("CenterCube").gameObject;
 		// Get all the center cube pieces
@@ -361,7 +498,7 @@ public class CubeControl : MonoBehaviour
 		// Configure the affected faces list while doing a clockwise rotation
 		// The affected faces are listed in the clockwise order, the corresponding boolean value indicates if the row needs to be flipped
 		// from the previous face
-		#region
+		#region Assign cube pieces
 		// Configure white face
 		var whiteCubeFaceAffectedFaces = new List<CubeFace>() { redCubeFace, greenCubeFace, orangeCubeFace, blueCubeFace };
 		var whiteCubeFaceAffectedRows = new List<CubeRowIndex>(){CubeRowIndex.Top,CubeRowIndex.Top,CubeRowIndex.Top, CubeRowIndex.Top};
@@ -427,92 +564,18 @@ public class CubeControl : MonoBehaviour
 		this.cubeFaceRotationRulesList.Add(RotatableCubeFaceIndex.CenterVertical, centerVerticalCubeFaceRotationRule);
 		this.cubeFaceRotationRulesList.Add(RotatableCubeFaceIndex.CenterSideways, centerSidewaysCubeFaceRotationRule);
 
-		#endregion
+        #endregion
 
-		// Test Code
-		
+        // Test Code
 
-		//this.RotateFace(RotatableCubeFaceIndex.CenterVertical, RotationMethodIndex.Clockwise);
-		//this.cubeFaceList[RotatableCubeFaceIndex.CenterVertical].Rotate(90);
 
-		//this.RotateFace(RotatableCubeFaceIndex.CenterSideways, RotationMethodIndex.Clockwise);
-		//this.cubeFaceList[RotatableCubeFaceIndex.CenterSideways].Rotate(90);
-
-		//this.RotateFace(RotatableCubeFaceIndex.CenterHorizontal, RotationMethodIndex.Clockwise);
-		//this.cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].Rotate(90);
-	}
-
-	// Rotate the given face with the given method
-	private void ReconfigureFacePiecesBasedOnRotation(RotatableCubeFaceIndex faceIndex, RotationMethodIndex rotationMethod)
-	{
-		if (rotationMethod == RotationMethodIndex.None)
-		{
-			return;
-		}
-		if (rotationMethod == RotationMethodIndex.Clockwise || rotationMethod == RotationMethodIndex.HalfCircle)
-		{
-			// Rotate the pieces themselves first
-			this.cubeFaceList[faceIndex].RotatePiecesClockwise();
-			var affectedFaceList = this.cubeFaceRotationRulesList[faceIndex];
-			// Initialize the first row to be inserted
-			var replaceRow = affectedFaceList.AffectedFaces[3].GetPiecesInRow(affectedFaceList.AffectedRowIndex[3]);
-			for (int i = 0; i < 4; i++)
-			{
-				replaceRow = affectedFaceList.AffectedFaces[i].ReplaceRow(
-					affectedFaceList.AffectedRowIndex[i], 
-					replaceRow,
-					affectedFaceList.RequiredToFlipFromPrevious[i]);
-			}
-			// Rotate the blocks themselves
-			// this.cubeFaceList[faceIndex].Rotate(90);
-			// If half circle, do it again
-			if (rotationMethod == RotationMethodIndex.HalfCircle)
-			{
-				this.ReconfigureFacePiecesBasedOnRotation(faceIndex, RotationMethodIndex.Clockwise);
-			}
-		}
-		else if (rotationMethod == RotationMethodIndex.Counterclockwise)
-		{
-			// Rotate the pieces themselves first
-			this.cubeFaceList[faceIndex].RotatePiecesCounterclockwise();
-			var affectedFaceList = this.cubeFaceRotationRulesList[faceIndex];
-			// Initialize the first row to be inserted
-			var replaceRow = affectedFaceList.AffectedFaces[0].GetPiecesInRow(affectedFaceList.AffectedRowIndex[0]);
-			for (int i = 3; i >= 0; i--)
-			{
-				
-				replaceRow = affectedFaceList.AffectedFaces[i].ReplaceRow(
-					affectedFaceList.AffectedRowIndex[i],
-					replaceRow,
-					// for face 0 to rotate to face 1, use the flipped bool for face 1
-					// thus, use i+1. If i+1>3, then that means it's the first cube. use 0 instead
-					affectedFaceList.RequiredToFlipFromPrevious[i+1>3?0:i+1]);
-			}
-			// Rotate the blocks themselves
-			// this.cubeFaceList[faceIndex].Rotate(-90);
-		}
-		// Reassign the 3 center layers to the new configuration of the cube
-		#region
-		// Change the center horizontal layer
-		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].ReplaceRow(CubeRowIndex.Top, cubeFaceList[RotatableCubeFaceIndex.Back].GetPiecesInRow(CubeRowIndex.CenterHorizontal), true);
-		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].ReplaceRow(CubeRowIndex.Bottom, cubeFaceList[RotatableCubeFaceIndex.Front].GetPiecesInRow(CubeRowIndex.CenterHorizontal), false);
-		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].CubePieceList[CubePieceIndex.CenterLeft] = cubeFaceList[RotatableCubeFaceIndex.Left].CubePieceList[CubePieceIndex.Center];
-		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Right].CubePieceList[CubePieceIndex.Center];
-		// Change the center vertical layer
-		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].ReplaceRow(CubeRowIndex.Top, cubeFaceList[RotatableCubeFaceIndex.Top].GetPiecesInRow(CubeRowIndex.CenterVertical), false);
-		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].ReplaceRow(CubeRowIndex.Bottom, cubeFaceList[RotatableCubeFaceIndex.Bottom].GetPiecesInRow(CubeRowIndex.CenterVertical), true);
-		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].CubePieceList[CubePieceIndex.CenterLeft] = cubeFaceList[RotatableCubeFaceIndex.Back].CubePieceList[CubePieceIndex.Center];
-		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Front].CubePieceList[CubePieceIndex.Center];
-		// Change the center vertical layer
-		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].ReplaceRow(CubeRowIndex.Top, cubeFaceList[RotatableCubeFaceIndex.Top].GetPiecesInRow(CubeRowIndex.CenterHorizontal), false);
-		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].ReplaceRow(CubeRowIndex.Bottom, cubeFaceList[RotatableCubeFaceIndex.Bottom].GetPiecesInRow(CubeRowIndex.CenterHorizontal), false);
-		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].CubePieceList[CubePieceIndex.CenterLeft] = cubeFaceList[RotatableCubeFaceIndex.Left].CubePieceList[CubePieceIndex.Center];
-		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Right].CubePieceList[CubePieceIndex.Center];
-		#endregion
-	}
+		// this.jobQueue.Enqueue(new JobRotateByMouse(RotatableCubeFaceIndex.Front, this, true, false));
+		// this.jobQueue.Enqueue(new JobStabilize(RotatableCubeFaceIndex.Front, this));
+		// this.jobQueue.Enqueue(new JobReassignFaces(RotatableCubeFaceIndex.Front, this));
+    }
 
 	// Find the opposite move
-	private static RotationMethodIndex FindOppositeMethod(RotationMethodIndex rotationMethodIndex)
+	public static RotationMethodIndex FindOppositeMethod(RotationMethodIndex rotationMethodIndex)
 	{
 		switch (rotationMethodIndex)
 		{
@@ -536,8 +599,83 @@ public class CubeControl : MonoBehaviour
 		return RotationMethodIndex.None;
 	}
 
+	// Reassgin the center cube faces
+	protected void ReassignCenterPieceFaces()
+	{
+		// Reassgin the center horizontal layer
+		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].ReplaceRow(CubeRowIndex.Top, cubeFaceList[RotatableCubeFaceIndex.Back].GetPiecesInRow(CubeRowIndex.CenterHorizontal), true);
+		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].ReplaceRow(CubeRowIndex.Bottom, cubeFaceList[RotatableCubeFaceIndex.Front].GetPiecesInRow(CubeRowIndex.CenterHorizontal), false);
+		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].CubePieceList[CubePieceIndex.CenterLeft] = cubeFaceList[RotatableCubeFaceIndex.Left].CubePieceList[CubePieceIndex.Center];
+		cubeFaceList[RotatableCubeFaceIndex.CenterHorizontal].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Right].CubePieceList[CubePieceIndex.Center];
+		// Reassgin the center vertical layer
+		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].ReplaceRow(CubeRowIndex.Top, cubeFaceList[RotatableCubeFaceIndex.Top].GetPiecesInRow(CubeRowIndex.CenterVertical), true);
+		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].ReplaceRow(CubeRowIndex.Bottom, cubeFaceList[RotatableCubeFaceIndex.Bottom].GetPiecesInRow(CubeRowIndex.CenterVertical), false);
+		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].CubePieceList[CubePieceIndex.CenterLeft] = cubeFaceList[RotatableCubeFaceIndex.Front].CubePieceList[CubePieceIndex.Center];
+		cubeFaceList[RotatableCubeFaceIndex.CenterVertical].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Back].CubePieceList[CubePieceIndex.Center];
+		// Reassgin the center vertical layer
+		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].ReplaceRow(CubeRowIndex.Top, cubeFaceList[RotatableCubeFaceIndex.Top].GetPiecesInRow(CubeRowIndex.CenterHorizontal), false);
+		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].ReplaceRow(CubeRowIndex.Bottom, cubeFaceList[RotatableCubeFaceIndex.Bottom].GetPiecesInRow(CubeRowIndex.CenterHorizontal), false);
+		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].CubePieceList[CubePieceIndex.CenterLeft] = cubeFaceList[RotatableCubeFaceIndex.Left].CubePieceList[CubePieceIndex.Center];
+		cubeFaceList[RotatableCubeFaceIndex.CenterSideways].CubePieceList[CubePieceIndex.CenterRight] = cubeFaceList[RotatableCubeFaceIndex.Right].CubePieceList[CubePieceIndex.Center];
+	}
+
+	// Rotate the given face with the given method
+	protected void ReconfigureFacePiecesBasedOnRotation(RotatableCubeFaceIndex faceIndex, RotationMethodIndex rotationMethod)
+	{
+		if (rotationMethod == RotationMethodIndex.None)
+		{
+			return;
+		}
+		if (rotationMethod == RotationMethodIndex.Clockwise || rotationMethod == RotationMethodIndex.HalfCircle)
+		{
+			// Rotate the pieces themselves first
+			this.cubeFaceList[faceIndex].RotatePiecesClockwise();
+			var affectedFaceList = this.cubeFaceRotationRulesList[faceIndex];
+			// Initialize the first row to be inserted
+			var replaceRow = affectedFaceList.AffectedFaces[3].GetPiecesInRow(affectedFaceList.AffectedRowIndex[3]);
+			for (int i = 0; i < 4; i++)
+			{
+				replaceRow = affectedFaceList.AffectedFaces[i].ReplaceRow(
+					affectedFaceList.AffectedRowIndex[i],
+					replaceRow,
+					affectedFaceList.RequiredToFlipFromPrevious[i]);
+			}
+			this.ReassignCenterPieceFaces();
+			// Rotate the blocks themselves
+			// this.cubeFaceList[faceIndex].Rotate(90);
+			// If half circle, do it again
+			if (rotationMethod == RotationMethodIndex.HalfCircle)
+			{
+				this.ReconfigureFacePiecesBasedOnRotation(faceIndex, RotationMethodIndex.Clockwise);
+				this.ReassignCenterPieceFaces();
+			}
+			return;
+		}
+		else
+		{
+			// Rotate the pieces themselves first
+			this.cubeFaceList[faceIndex].RotatePiecesCounterclockwise();
+			var affectedFaceList = this.cubeFaceRotationRulesList[faceIndex];
+			// Initialize the first row to be inserted
+			var replaceRow = affectedFaceList.AffectedFaces[0].GetPiecesInRow(affectedFaceList.AffectedRowIndex[0]);
+			for (int i = 3; i >= 0; i--)
+			{
+
+				replaceRow = affectedFaceList.AffectedFaces[i].ReplaceRow(
+					affectedFaceList.AffectedRowIndex[i],
+					replaceRow,
+					// for face 0 to rotate to face 1, use the flipped bool for face 1
+					// thus, use i+1. If i+1>3, then that means it's the first cube. use 0 instead
+					affectedFaceList.RequiredToFlipFromPrevious[i + 1 > 3 ? 0 : i + 1]);
+			}
+			// Rotate the blocks themselves
+			// this.cubeFaceList[faceIndex].Rotate(-90);
+		}
+		this.ReassignCenterPieceFaces();
+	}
+
 	// Determine if the given game object is on the surface of the cube piece
-	private bool IsPieceOnSurfaceOfCubeFace(GameObject givenPieceFace, RotatableCubeFaceIndex cubeFaceIndex)
+	protected bool IsPieceOnSurfaceOfCubeFace(GameObject givenPieceFace, RotatableCubeFaceIndex cubeFaceIndex)
 	{
 		// If the piece is not contained in the face, return false
 		var givenPiece = givenPieceFace.transform.parent;
@@ -569,7 +707,7 @@ public class CubeControl : MonoBehaviour
 	}
 
 	// Rotate the given face based on the rotation method
-	private void RotateFaceBasedOnMethod(RotatableCubeFaceIndex cubeFaceIndex, RotationMethodIndex rotationMethod)
+	protected void RotateFaceBasedOnMethod(RotatableCubeFaceIndex cubeFaceIndex, RotationMethodIndex rotationMethod)
 	{
 		switch (rotationMethod)
 		{
@@ -596,35 +734,35 @@ public class CubeControl : MonoBehaviour
 		return;
 	}
 
-	// Determine the face currently being rotated, the direction and relation to mouse X or Y
-	private void InitializeCurrentRotation()
+	// Determine the face currently being rotated from mouse, the direction and relation to mouse X or Y
+    private void InitializeCurrentRotation()
 	{
 		// Get the gameObject that got clicked on with a ray
-		GameObject faceClicked = null;
+		GameObject stickerClicked = null;
 		Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
 		RaycastHit hit;
 		if (Physics.Raycast(ray, out hit))
 		{
-			faceClicked = hit.collider.gameObject;
+			stickerClicked = hit.collider.gameObject;
 		}
 		// If nothing is clicked, return
-		if (faceClicked == null || faceClicked.transform.parent == null)
+		if (stickerClicked == null || stickerClicked.transform.parent == null)
 		{
 			return;
 		}
 
-		// Start the rotation
-		this.isBeingRotated = true;
+		//// Start the rotation
+		//this.isBeingRotated = true;
 
 		// Find the parent of the piece
-		var pieceClicked = faceClicked.transform.parent.gameObject;
+		var pieceClicked = stickerClicked.transform.parent.gameObject;
 
 		// Find the position of the main camera and use its X and Z values to determine the rotation
 		var cameraX = mainCamera.transform.position.x;
 		var cameraZ = mainCamera.transform.position.z;
 
 		// Find if the mouse is moving more in X axis or Y axis to determine the main axis
-		this.isMainMouseAxisX = (Math.Abs(this.mouseX) > Math.Abs(this.mouseY));
+		var isMainMouseAxisX = (Math.Abs(this.mouseX) > Math.Abs(this.mouseY));
 
 		// Define the current faces relative to the camera
 		RotatableCubeFaceIndex currentFrontFace;
@@ -635,12 +773,12 @@ public class CubeControl : MonoBehaviour
 		RotatableCubeFaceIndex currentCenterVertical;
 		RotatableCubeFaceIndex currentCenterSideways;
 		// When the current front is orange, the center veritcal is reversed. use the following bool values to indicete 
-		// if the current veritcal and sideways center need to be reversed
-		bool IsCurrentCenterVerticalReversed = false;
-		bool IsCurrentCenterSidewaysReversed = false;
+		// if the current veritcal and sideways movements is normal or needs to be reversed
+		bool IsCurrentVerticalNormal = false;
+		bool IsCurrentSidewaysNormal = false;
 
 		// Assign the current cube faces using the camera position
-		#region
+		#region Assign current cube faces
 		if ((cameraZ > 0) && (Math.Abs(cameraZ) > Math.Abs(cameraX)))
 		{
 			currentFrontFace = RotatableCubeFaceIndex.Front;
@@ -650,9 +788,9 @@ public class CubeControl : MonoBehaviour
 			//currentCenterHorizontal = RotatableCubeFaceIndex.CenterHorizontal;
 			currentCenterVertical = RotatableCubeFaceIndex.CenterVertical;
 			currentCenterSideways = RotatableCubeFaceIndex.CenterSideways;
-			IsCurrentCenterVerticalReversed = false;
-			IsCurrentCenterSidewaysReversed = false;
-			
+			IsCurrentVerticalNormal = false;
+			IsCurrentSidewaysNormal = false;
+
 		}
 		else if ((cameraZ < 0) && (Math.Abs(cameraZ) > Math.Abs(cameraX)))
 		{
@@ -663,8 +801,8 @@ public class CubeControl : MonoBehaviour
 			//currentCenterHorizontal = RotatableCubeFaceIndex.CenterHorizontal;
 			currentCenterVertical = RotatableCubeFaceIndex.CenterVertical;
 			currentCenterSideways = RotatableCubeFaceIndex.CenterSideways;
-			IsCurrentCenterVerticalReversed = true;
-			IsCurrentCenterSidewaysReversed = true;
+			IsCurrentVerticalNormal = true;
+			IsCurrentSidewaysNormal = true;
 		}
 		else if (cameraX > 0)
 		{
@@ -675,8 +813,8 @@ public class CubeControl : MonoBehaviour
 			//currentCenterHorizontal = RotatableCubeFaceIndex.CenterHorizontal;
 			currentCenterVertical = RotatableCubeFaceIndex.CenterSideways;
 			currentCenterSideways = RotatableCubeFaceIndex.CenterVertical;
-			IsCurrentCenterVerticalReversed = false;
-			IsCurrentCenterSidewaysReversed = false;
+			IsCurrentVerticalNormal = false;
+			IsCurrentSidewaysNormal = false;
 		}
 		else
 		{
@@ -687,10 +825,10 @@ public class CubeControl : MonoBehaviour
 			//currentCenterHorizontal = RotatableCubeFaceIndex.CenterHorizontal;
 			currentCenterVertical = RotatableCubeFaceIndex.CenterSideways;
 			currentCenterSideways = RotatableCubeFaceIndex.CenterVertical;
-			IsCurrentCenterVerticalReversed = false;
-			IsCurrentCenterSidewaysReversed = true;
+			IsCurrentVerticalNormal = false;
+			IsCurrentSidewaysNormal = true;
 		}
-		#endregion
+		#endregion 
 
 		// If the piece is contained in each layer
 		var isPieceInTop = this.cubeFaceList[RotatableCubeFaceIndex.Top].Contains(pieceClicked);
@@ -700,321 +838,319 @@ public class CubeControl : MonoBehaviour
 		var isPieceInCurrentFront = this.cubeFaceList[currentFrontFace].Contains(pieceClicked);
 		var isPieceInCurrentBack = this.cubeFaceList[currentBackFace].Contains(pieceClicked);
 
-		// When dealing with the clicked face being on top
-		#region
-		if (this.IsPieceOnSurfaceOfCubeFace(faceClicked, RotatableCubeFaceIndex.Top))
+		// Values required to define rotation
+		var currentRotatingFaceIndex = RotatableCubeFaceIndex.Front;
+		var isCurrentFaceRotatingClockwise = true;
+
+		// When dealing with the clicked sticker being on top
+		#region Sticker On Top
+		if (this.IsPieceOnSurfaceOfCubeFace(stickerClicked, RotatableCubeFaceIndex.Top))
 		{
 			// When moving mouse side ways, rotate the respective faces
 			if (isMainMouseAxisX)
 			{
 				if (isPieceInCurrentBack)
 				{
-					this.currentRotatingFaceIndex = currentBackFace;
-					this.isCurrentFaceRotatingClockwise = false;
-					return;
+					currentRotatingFaceIndex = currentBackFace;
+					isCurrentFaceRotatingClockwise = false;
 				}
-				if (isPieceInCurrentFront)
+				else if (isPieceInCurrentFront)
 				{
-					this.currentRotatingFaceIndex = currentFrontFace;
-					this.isCurrentFaceRotatingClockwise = true;
-					return;
+					currentRotatingFaceIndex = currentFrontFace;
+					isCurrentFaceRotatingClockwise = true;
 				}
-				this.currentRotatingFaceIndex = currentCenterSideways;
-				this.isCurrentFaceRotatingClockwise = !IsCurrentCenterSidewaysReversed;
-				return;
+				else
+				{
+					currentRotatingFaceIndex = currentCenterSideways;
+					isCurrentFaceRotatingClockwise = IsCurrentSidewaysNormal;
+				}
 			}
-			// Whenthe mouse if moving up and down, rotate the respective faces
-			if (isPieceInCurrentLeft)
+			// When the mouse if moving up and down, rotate the respective faces
+			else if (isPieceInCurrentLeft)
 			{
-				this.currentRotatingFaceIndex = currentLeftFace;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				currentRotatingFaceIndex = currentLeftFace;
+				isCurrentFaceRotatingClockwise = false;
 			}
 			if (isPieceInCurrentRight)
 			{
-				this.currentRotatingFaceIndex = currentRightFace;
-				this.isCurrentFaceRotatingClockwise = true;
-				return;
+				currentRotatingFaceIndex = currentRightFace;
+				isCurrentFaceRotatingClockwise = true;
 			}
-			this.currentRotatingFaceIndex = currentCenterVertical;
-			this.isCurrentFaceRotatingClockwise = !IsCurrentCenterVerticalReversed;
-			return;
+			else
+			{
+				currentRotatingFaceIndex = currentCenterVertical;
+				isCurrentFaceRotatingClockwise = IsCurrentVerticalNormal;
+			}
 		}
 		#endregion
-
-		// When dealing with the clicked face bing on front
-		#region
-		if (this.IsPieceOnSurfaceOfCubeFace(faceClicked, currentFrontFace))
+		// When dealing with the clicked sticker being on front
+		#region Sticker On Front
+		else if (this.IsPieceOnSurfaceOfCubeFace(stickerClicked, RotatableCubeFaceIndex.Front))
 		{
 			// When moving mouse side ways, rotate the respective faces
 			if (isMainMouseAxisX)
 			{
 				if (isPieceInTop)
 				{
-					this.currentRotatingFaceIndex = RotatableCubeFaceIndex.Top;
-					this.isCurrentFaceRotatingClockwise = false;
-					return;
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.Top;
+					isCurrentFaceRotatingClockwise = false;
 				}
-				if (isPieceInBottom)
+				else if (isPieceInBottom)
 				{
-					this.currentRotatingFaceIndex = RotatableCubeFaceIndex.Bottom;
-					this.isCurrentFaceRotatingClockwise = true;
-					return;
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.Bottom;
+					isCurrentFaceRotatingClockwise = true;
 				}
-				this.currentRotatingFaceIndex = RotatableCubeFaceIndex.CenterHorizontal;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				else
+				{
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.CenterHorizontal;
+					isCurrentFaceRotatingClockwise = false;
+				}
 			}
-			// Whenthe mouse if moving up and down, rotate the respective faces
-			if (isPieceInCurrentLeft)
+			// When the mouse if moving up and down, rotate the respective faces
+			else if (isPieceInCurrentLeft)
 			{
-				this.currentRotatingFaceIndex = currentLeftFace;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				currentRotatingFaceIndex = currentLeftFace;
+				isCurrentFaceRotatingClockwise = false;
 			}
 			if (isPieceInCurrentRight)
 			{
-				this.currentRotatingFaceIndex = currentRightFace;
-				this.isCurrentFaceRotatingClockwise = true;
-				return;
+				currentRotatingFaceIndex = currentRightFace;
+				isCurrentFaceRotatingClockwise = true;
 			}
-			this.currentRotatingFaceIndex = currentCenterVertical;
-			this.isCurrentFaceRotatingClockwise = !IsCurrentCenterVerticalReversed;
-			return;
+			else
+			{
+				currentRotatingFaceIndex = currentCenterVertical;
+				isCurrentFaceRotatingClockwise = IsCurrentVerticalNormal;
+			}
 		}
 		#endregion
-
-		// When dealing with the clicked face bing on left
-		#region
-		if (this.IsPieceOnSurfaceOfCubeFace(faceClicked, currentLeftFace))
+		// When dealing with the clicked sticker being on left
+		#region Sticker On Left
+		else if (this.IsPieceOnSurfaceOfCubeFace(stickerClicked, RotatableCubeFaceIndex.Left))
 		{
 			// When moving mouse side ways, rotate the respective faces
 			if (isMainMouseAxisX)
 			{
 				if (isPieceInTop)
 				{
-					this.currentRotatingFaceIndex = RotatableCubeFaceIndex.Top;
-					this.isCurrentFaceRotatingClockwise = false;
-					return;
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.Top;
+					isCurrentFaceRotatingClockwise = false;
 				}
-				if (isPieceInBottom)
+				else if (isPieceInBottom)
 				{
-					this.currentRotatingFaceIndex = RotatableCubeFaceIndex.Bottom;
-					this.isCurrentFaceRotatingClockwise = true;
-					return;
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.Bottom;
+					isCurrentFaceRotatingClockwise = true;
 				}
-				this.currentRotatingFaceIndex = RotatableCubeFaceIndex.CenterHorizontal;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				else
+				{
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.CenterHorizontal;
+					isCurrentFaceRotatingClockwise = false;
+				}
 			}
-			// Whenthe mouse if moving up and down, rotate the respective faces
-			if (isPieceInCurrentFront)
+			// When the mouse if moving up and down, rotate the respective faces
+			else if (isPieceInCurrentFront)
 			{
-				this.currentRotatingFaceIndex = currentFrontFace;
-				this.isCurrentFaceRotatingClockwise = true;
-				return;
+				currentRotatingFaceIndex = currentFrontFace;
+				isCurrentFaceRotatingClockwise = true;
 			}
 			if (isPieceInCurrentBack)
 			{
-				this.currentRotatingFaceIndex = currentBackFace;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				currentRotatingFaceIndex = currentBackFace;
+				isCurrentFaceRotatingClockwise = false;
 			}
-			this.currentRotatingFaceIndex = currentCenterSideways;
-			this.isCurrentFaceRotatingClockwise = !IsCurrentCenterSidewaysReversed;
-			return;
+			else
+			{
+				currentRotatingFaceIndex = currentCenterSideways;
+				isCurrentFaceRotatingClockwise = IsCurrentSidewaysNormal;
+			}
 		}
 		#endregion
-
-		// When dealing with the clicked face bing on right
-		#region
-		if (this.IsPieceOnSurfaceOfCubeFace(faceClicked, currentRightFace))
+		// When dealing with the clicked sticker being on right
+		#region Sticker On Right
+		else if (this.IsPieceOnSurfaceOfCubeFace(stickerClicked, RotatableCubeFaceIndex.Right))
 		{
 			// When moving mouse side ways, rotate the respective faces
 			if (isMainMouseAxisX)
 			{
 				if (isPieceInTop)
 				{
-					this.currentRotatingFaceIndex = RotatableCubeFaceIndex.Top;
-					this.isCurrentFaceRotatingClockwise = false;
-					return;
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.Top;
+					isCurrentFaceRotatingClockwise = false;
 				}
-				if (isPieceInBottom)
+				else if (isPieceInBottom)
 				{
-					this.currentRotatingFaceIndex = RotatableCubeFaceIndex.Bottom;
-					this.isCurrentFaceRotatingClockwise = true;
-					return;
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.Bottom;
+					isCurrentFaceRotatingClockwise = true;
 				}
-				this.currentRotatingFaceIndex = RotatableCubeFaceIndex.CenterHorizontal;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				else
+				{
+					currentRotatingFaceIndex = RotatableCubeFaceIndex.CenterHorizontal;
+					isCurrentFaceRotatingClockwise = false;
+				}
 			}
-			// Whenthe mouse if moving up and down, rotate the respective faces
-			if (isPieceInCurrentFront)
+			// When the mouse if moving up and down, rotate the respective faces
+			else if (isPieceInCurrentFront)
 			{
-				this.currentRotatingFaceIndex = currentFrontFace;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				currentRotatingFaceIndex = currentFrontFace;
+				isCurrentFaceRotatingClockwise = false;
 			}
 			if (isPieceInCurrentBack)
 			{
-				this.currentRotatingFaceIndex = currentBackFace;
-				this.isCurrentFaceRotatingClockwise = true;
-				return;
+				currentRotatingFaceIndex = currentBackFace;
+				isCurrentFaceRotatingClockwise = true;
 			}
-			this.currentRotatingFaceIndex = currentCenterSideways;
-			this.isCurrentFaceRotatingClockwise = !IsCurrentCenterSidewaysReversed;
-			return;
+			else
+			{
+				currentRotatingFaceIndex = currentCenterSideways;
+				isCurrentFaceRotatingClockwise = !IsCurrentSidewaysNormal;
+			}
 		}
 		#endregion
-
-		// When dealing with the clicked face being on bottom
-		#region
-		if (this.IsPieceOnSurfaceOfCubeFace(faceClicked, RotatableCubeFaceIndex.Bottom))
+		// When dealing with the clicked sticker being on bottom
+		#region Sticker On Bottom
+		if (this.IsPieceOnSurfaceOfCubeFace(stickerClicked, RotatableCubeFaceIndex.Bottom))
 		{
 			// When moving mouse side ways, rotate the respective faces
 			if (isMainMouseAxisX)
 			{
 				if (isPieceInCurrentBack)
 				{
-					this.currentRotatingFaceIndex = currentBackFace;
-					this.isCurrentFaceRotatingClockwise = true;
-					return;
+					currentRotatingFaceIndex = currentBackFace;
+					isCurrentFaceRotatingClockwise = true;
 				}
-				if (isPieceInCurrentFront)
+				else if (isPieceInCurrentFront)
 				{
-					this.currentRotatingFaceIndex = currentFrontFace;
-					this.isCurrentFaceRotatingClockwise = false;
-					return;
+					currentRotatingFaceIndex = currentFrontFace;
+					isCurrentFaceRotatingClockwise = false;
 				}
-				this.currentRotatingFaceIndex = currentCenterSideways;
-				this.isCurrentFaceRotatingClockwise = !IsCurrentCenterSidewaysReversed;
-				return;
+				else
+				{
+					currentRotatingFaceIndex = currentCenterSideways;
+					isCurrentFaceRotatingClockwise = !IsCurrentSidewaysNormal;
+				}
 			}
-			// Whenthe mouse if moving up and down, rotate the respective faces
-			if (isPieceInCurrentLeft)
+			// When the mouse if moving up and down, rotate the respective faces
+			else if (isPieceInCurrentLeft)
 			{
-				this.currentRotatingFaceIndex = currentLeftFace;
-				this.isCurrentFaceRotatingClockwise = false;
-				return;
+				currentRotatingFaceIndex = currentLeftFace;
+				isCurrentFaceRotatingClockwise = false;
 			}
 			if (isPieceInCurrentRight)
 			{
-				this.currentRotatingFaceIndex = currentRightFace;
-				this.isCurrentFaceRotatingClockwise = true;
-				return;
+				currentRotatingFaceIndex = currentRightFace;
+				isCurrentFaceRotatingClockwise = true;
 			}
-			this.currentRotatingFaceIndex = currentCenterVertical;
-			this.isCurrentFaceRotatingClockwise = !IsCurrentCenterVerticalReversed;
-			return;
+			else
+			{
+				currentRotatingFaceIndex = currentCenterVertical;
+				isCurrentFaceRotatingClockwise = IsCurrentVerticalNormal;
+			}
 		}
 		#endregion
+
+		// Insert the defined rotation into the job queue, then stabilize and reassign
+		this.jobQueue.Enqueue(new JobRotateByMouse(currentRotatingFaceIndex, this, isCurrentFaceRotatingClockwise, isMainMouseAxisX));
+		this.jobQueue.Enqueue(new JobStabilize(currentRotatingFaceIndex, this));
+		this.jobQueue.Enqueue(new JobReassignFaces(currentRotatingFaceIndex, this));
 	}
+
+	// Give the degree corresponding to the rotation method
+	private int GetDegreeFromRotationMethod(RotationMethodIndex rotationMethod)
+	{
+		switch (rotationMethod)
+		{
+			case RotationMethodIndex.Clockwise:
+				return 90;
+			case RotationMethodIndex.Counterclockwise:
+				return -90;
+			case RotationMethodIndex.HalfCircle:
+				return 180;
+			default:
+				break;
+		}
+		return 0;
+	}
+
+	//// Insert the given move into the queue
+	//private void InsertMoveIntoQueue(MoveDone move)
+	//{
+	//    this.InsertMoveIntoQueue(move.faceRotated, move.rotationMethod);
+	//}
+	//private void InsertMoveIntoQueue(RotatableCubeFaceIndex cubeFaceIndex, RotationMethodIndex methodIndex)
+	//{
+	//    if (methodIndex == RotationMethodIndex.None)
+	//    {
+	//        return;
+	//    }
+	//    // Set the max amount that can be turned per frame based on the rotation method
+	//    float maxTurningPerRotation = methodIndex != RotationMethodIndex.Counterclockwise ? this.ScrambleUndoRedoVelcotity : -this.ScrambleUndoRedoVelcotity;
+	//    float degreesLeft;
+	//    switch (methodIndex)
+	//    {
+	//        case RotationMethodIndex.Clockwise:
+	//            {
+	//                degreesLeft = 90;
+	//                break;
+	//            }
+	//        case RotationMethodIndex.HalfCircle:
+	//            {
+	//                degreesLeft = 180;
+	//                break;
+	//            }
+	//        default:
+	//            {
+	//                degreesLeft = -90;
+	//                break;
+	//            }
+	//    }
+	//    while (Math.Abs(degreesLeft) > this.ScrambleUndoRedoVelcotity)
+	//    {
+	//        this.jobQueue.Enqueue(new JobRotateFface(cubeFaceIndex, this, maxTurningPerRotation));
+	//        degreesLeft -= maxTurningPerRotation;
+	//    }
+	//    this.jobQueue.Enqueue(new JobRotateFface(cubeFaceIndex, this, degreesLeft));
+	//}
+
 	// Update is called once per frame
 	void Update() 
 	{
-		//this.RotateFace(RotatableCubeFaceIndex.CenterVertical, RotationMethodIndex.Clockwise);
-		//this.cubeFaceList[RotatableCubeFaceIndex.CenterVertical].Rotate(90);
-
+		// Update the current mouse X and Y
 		this.mouseX = Input.GetAxis("Mouse X");
 		this.mouseY = Input.GetAxis("Mouse Y");
 
-		// If no cube face is being rotated, set the bool to false
-		if (this.currentRotatingFaceIndex == null)
-		{
-			this.isBeingRotated = false;
-		}
+		// Update the current state of the left click mouse button
+		var isLeftClickDown = Input.GetMouseButtonDown(0);
 
-		// If the cube is waiting for mouse movement, but the left click is let go, cancel the waiting
-		if (isWaitingMouseMovement && Input.GetMouseButtonUp(0))
+		// When the job queue is not empty, execute the job
+		var currentJob = this.jobQueue.Peek();
+		while (currentJob != null)
 		{
-			isWaitingMouseMovement = false;
-		}
+			// Run the current job
+			currentJob.Execute();
 
-		// If the cube is not rotating or stabilizing then rotate it based on mouse input
-		if (!this.isBeingRotated && !this.isStabilizing && (Input.GetMouseButtonDown(0) || isWaitingMouseMovement))
-		{
-			// If the mouse if barely moving, do not initialize rotation
-			if (Math.Abs(mouseX) < 0.5 && Math.Abs(mouseY) < 0.5)
-			{
-				this.isWaitingMouseMovement = true;
-			}
-			else
-			{
-				// Initialize the rotation
-				this.isWaitingMouseMovement = false;
-				this.InitializeCurrentRotation();
-			}
-		}
-
-		// The cube has started rotating, and the user is continuing the rotation process
-		if (this.isBeingRotated)
-		{
-			if (this.currentRotatingFaceIndex == null)
+			// if the current job is not finished, return and do it again next update
+			if (!currentJob.IsFinished())
 			{
 				return;
 			}
-			if (this.isMainMouseAxisX)
-			{
-				var degree =  mouseX * this.rotationVelocity;
-				if (this.isCurrentFaceRotatingClockwise)	
-				{
-					this.cubeFaceList[currentRotatingFaceIndex.Value].Rotate(degree);
-				}
-				//if (!this.isCurrentFaceRotatingClockwise)
-				else
-				{
-					this.cubeFaceList[currentRotatingFaceIndex.Value].Rotate(-degree);
-				}
-			}
-			//if (!this.isMainMouseAxisX)
-			else
-			{
-				var degree = mouseY * this.rotationVelocity;
-				if (this.isCurrentFaceRotatingClockwise)
-				{
-					this.cubeFaceList[currentRotatingFaceIndex.Value].Rotate(degree);
-				}
-				//if (!this.isCurrentFaceRotatingClockwise)
-				else
-				{
-					this.cubeFaceList[currentRotatingFaceIndex.Value].Rotate(-degree);
-				}
-			}
+
+			// the current job is done, move onto next job
+			this.jobQueue.Dequeue();
+			currentJob = this.jobQueue.Peek();
 		}
-		// The cube was being rotated, but now the mouse key is released. Start stabilization process
-		if (this.isBeingRotated && Input.GetMouseButtonUp(0))
+
+		// Job queue is empty, listen for inputs
+		if (isLeftClickDown || isWaitingMouseMovement)
 		{
-			if (this.currentRotatingFaceIndex != null)
+			// Left click has been clicked, but mouse has not moved very much or at all, wait for further input
+			if (Math.Abs(mouseX) <= 0.1 && Math.Abs(mouseY) <= 0.1)
 			{
-				this.isBeingRotated = false;
-				this.isStabilizing = true;
+				this.isWaitingMouseMovement = true;
+				return;
 			}
+			// Mouse has moved pass the threash hold, run initialize rotation
+			this.isWaitingMouseMovement = false;
+			this.InitializeCurrentRotation();
 		}
-		// The cube is stabilizing, but not yet stabilized
-		if (this.isStabilizing)
-		{
-			var currentRotatingFace = this.cubeFaceList[currentRotatingFaceIndex.Value];
-
-			currentRotatingFace.Stabilize(stabilizeVelocity);
-
-			if (currentRotatingFace.IsStabilized())
-			{
-				// the cube is done stabilizing, get the amount rotated, apply them to the faces and then clear the rotation
-				var rotationMethod = this.cubeFaceList[currentRotatingFaceIndex.Value].CheckAmountRotated();
-				this.ReconfigureFacePiecesBasedOnRotation(currentRotatingFaceIndex.Value, rotationMethod);
-				currentRotatingFace.ClearRotation();
-
-				// If an actual move is done, add it to the undo stack and clear the redo stack
-				if (rotationMethod != RotationMethodIndex.None)
-				{
-					this.redoStack.Clear();
-					this.undoStack.Push(new MoveDone(currentRotatingFaceIndex.Value, rotationMethod));
-				}
-
-				this.currentRotatingFaceIndex = null;
-				this.isStabilizing = false;
-			}
-		}
-	}
+    }
 }
